@@ -4603,14 +4603,28 @@ function getPCPrint(mon)
 end
 
 function printPartyStatus(buffer)
+    if not buffer then
+        console:error(logTimestamp() .. "partyBuffer was nil during update")
+        return
+    end
+
+    if not pokeDisplay then
+        console:error(logTimestamp() .. "pokeDisplay was nil during update")
+        return
+    end
+
     address = storageLoc + 4
     i = 0
     buffer:clear()
+    local party = {}
     for _, mon in ipairs(getParty()) do
         if (mon.species ~= 0 and mons[mon.species] ~= nil) then
             buffer:print(getPartyPrint(mon))
+            table.insert(party, mons[mon.species])
         end
     end
+    pokeDisplay:updateParty(party)
+
     while i < 120 do
         if (emu:read32(address) ~= 0) then
             buffer:print(getPCPrint(readBoxMon(address)))
@@ -4674,7 +4688,12 @@ function getHP(mon)
     end
 end
 
-function getHiddens(buffer)
+function printHiddens(buffer)
+    if not buffer then
+        console:error(logTimestamp() .. "hiddenBuffer was nil during update")
+        return
+    end
+
     address = storageLoc + 4
     i = 0
     buffer:clear()
@@ -4692,53 +4711,33 @@ function getHiddens(buffer)
     end
 end
 
-function hiddens()
-    if not hiddenBuffer then
-        console:log("error")
-        return
-    end
-    getHiddens(hiddenBuffer)
-end
-
 function logTimestamp()
-    return "[" .. os.date("%Y-%m-%d %H:%M:%S") .. "] "
+    return "" .. os.date("%Y-%m-%d %H:%M:%S") .. " [runandbun_streamer:" .. STREAMER_SCRIPT_VERSION .. "] "
 end
 
-function startScript()
-    console:log(logTimestamp() .. 'Pokemon Run and Bun script')
-
-    if not partyBuffer then
-        partyBuffer = SwapBuffer:createBuffer("Showdown Export")
-        partyBuffer:setSize(200, 1000)
-    end
-    if not hiddenBuffer then
-        hiddenBuffer = SwapBuffer:createBuffer("Hidden Powers")
-        hiddenBuffer:setSize(200, 200)
+function compareArray(a1, a2)
+    if #a1 ~= #a2 then
+        return false
     end
 
-    export()
+    for i, v in ipairs(a1) do
+        if v ~= a2[i] then
+            return false
+        end
+    end
+
+    return true
 end
 
-function export()
-    if not partyBuffer then
-        console:error(logTimestamp() .. "error: partyBuffer could not be created")
-        return
-    end
-    printPartyStatus(partyBuffer)
-    if not hiddenBuffer then
-        console:error(logTimestamp() .. "error: hiddenBuffer could not be created")
-        return
-    end
-    hiddens()
-end
+STREAMER_SCRIPT_VERSION = "1.0"
 
 -- Wrapper around mgba TextBuffer that prints only on changes.
 -- Prints occur on SwapBuffer:clear().
 SwapBuffer = {}
 SwapBuffer.__index = SwapBuffer
 
-function SwapBuffer:createBuffer(name)
-    local o = setmetatable({}, { __index = self })
+function SwapBuffer.new(name)
+    local o = setmetatable({}, { __index = SwapBuffer })
 
     o.console = console:createBuffer(name)
     if o.console == nil then
@@ -4765,19 +4764,7 @@ function SwapBuffer:print(text)
 end
 
 function SwapBuffer:bufferEquals()
-    local buffer1 = self.buffer[1]
-    local buffer2 = self.buffer[2]
-    if #buffer1 ~= #buffer2 then
-        return false
-    end
-
-    for i, v in ipairs(buffer1) do
-        if v ~= buffer2[i] then
-            return false
-        end
-    end
-
-    return true
+    return compareArray(self.buffer[1], self.buffer[2])
 end
 
 function SwapBuffer:clear()
@@ -4793,5 +4780,127 @@ function SwapBuffer:clear()
     self.buffer[self.activeBuffer] = {}
 end
 
-startScript()
-callbacks:add("frame", export)
+INCOMING_DELAY = 30
+PokeDisplay = {}
+PokeDisplay.__index = PokeDisplay
+
+function PokeDisplay.new()
+    local o = setmetatable({}, { __index = PokeDisplay })
+
+    o.current = nil
+    o.incoming = nil
+    o.timer = 0
+
+    return o
+end
+
+function PokeDisplay:update()
+    if not self.incoming then
+        return
+    end
+
+    self.timer = self.timer + 1
+    if self.timer < INCOMING_DELAY then
+        return
+    end
+
+    self.current = self.incoming
+    self.incoming = nil
+    self:display()
+end
+
+function PokeDisplay:display()
+    local slot = 0
+    for slot = 1, 6 do
+        local species = self.current[slot]
+        if not species then
+            species = "unknown"
+        end
+        self:writePartySlot(slot, species)
+    end
+end
+
+function PokeDisplay:getSpriteData(species)
+    local path = "./sprites/" .. species:lower() .. ".png"
+    local spriteFile = io.open(path, "r")
+    if not spriteFile then
+        console:error(logTimestamp() .. "could not open '" .. path .. "'.")
+        return
+    end
+
+    local spriteData = spriteFile:read("*a")
+    spriteFile:close()
+
+    return spriteData
+end
+
+function PokeDisplay:writePartySlot(slot, species)
+    local data = self:getSpriteData(species)
+    if not data then
+        return
+    end
+
+    local path = "./party/" .. slot .. ".png"
+    local partyFile = io.open(path, "w")
+    if not partyFile then
+        console:error(logTimestamp() .. "could not open '" .. path .. "'.")
+    end
+    partyFile:write(data)
+    partyFile:close()
+end
+
+function PokeDisplay:updateParty(incoming)
+    if not self.current then
+        self.current = incoming
+        self:display()
+        return
+    end
+
+    if self.incoming and compareArray(self.incoming, incoming) then
+        return
+    end
+
+    if compareArray(self.current, incoming) then
+        self.incoming = nil
+        self.timer = 0
+        return
+    end
+
+    self.incoming = incoming
+    self.timer = 0
+end
+
+function update()
+    printPartyStatus(partyBuffer)
+    printHiddens(hiddenBuffer)
+    pokeDisplay:update()
+end
+
+function setup()
+    console:log(logTimestamp() .. "script initialized")
+
+    if not partyBuffer then
+        partyBuffer = SwapBuffer.new("Showdown Export")
+        partyBuffer:setSize(200, 1000)
+    end
+
+    if not hiddenBuffer then
+        hiddenBuffer = SwapBuffer.new("Hidden Powers")
+        hiddenBuffer:setSize(200, 200)
+    end
+
+    if not pokeDisplay then
+        pokeDisplay = PokeDisplay.new()
+    end
+
+    update()
+    callbacks:add("frame", update)
+end
+
+console:log(logTimestamp() .. "script loaded")
+callbacks:add("start", setup)
+if emu then
+    setup()
+else
+    console:log(logTimestamp() .. "waiting for game ...")
+end
