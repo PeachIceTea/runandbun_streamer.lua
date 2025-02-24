@@ -5,7 +5,7 @@ This is a modified version of [ForwardFeed's runandbun_script_imports.lua](https
 
 Rather than requiring you to call `export()` manually, this modification will check for changes every frame. On my computer this reduces the unlimited speed up from ~3000 frames to ~2000 frames.
 
-It will also keep he party folder up to date with sprites of the current party.
+It will also update the sprites in the `party` directory to reflect the current party.
 
 ## Setup
 1. Get [mgba](https://mgba.io/).
