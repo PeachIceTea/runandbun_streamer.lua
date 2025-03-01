@@ -40,7 +40,11 @@ def fix_sprite_name(id: int, special: Optional[str]) -> tuple[str, Optional[str]
 def get_sprite(id: int, available_sprites: list, special: Optional[str]=None) -> Optional[str]:
     id_str, special = fix_sprite_name(id, special)
     search_term_non_special = f"{id_str}.png"
-    search_term = f"{id_str}{("-" + special if special else "")}.png"
+    if special is not None:
+        special = "-" + special
+    else:
+        special = ""
+    search_term = f"{id_str}{special}.png"
 
     found_non_special = False
     for sprite_name in available_sprites:
