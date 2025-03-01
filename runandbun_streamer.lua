@@ -4822,7 +4822,7 @@ end
 
 function PokeDisplay:getSpriteData(species)
     local path = "./sprites/" .. species:lower() .. ".png"
-    local spriteFile = io.open(path, "r")
+    local spriteFile = io.open(path, "rb")
     if not spriteFile then
         console:error(logTimestamp() .. "could not open '" .. path .. "'.")
         return
@@ -4841,11 +4841,12 @@ function PokeDisplay:writePartySlot(slot, species)
     end
 
     local path = "./party/" .. slot .. ".png"
-    local partyFile = io.open(path, "w")
+    local partyFile = io.open(path, "wb")
     if not partyFile then
         console:error(logTimestamp() .. "could not open '" .. path .. "'.")
     end
     partyFile:write(data)
+    partyFile:flush()
     partyFile:close()
 end
 
